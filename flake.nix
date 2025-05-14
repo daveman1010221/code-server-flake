@@ -18,7 +18,10 @@
           config.allowUnfree = true;
         };
 
-        codeServerDeps = ./code-server-vendored-deps.tar.gz;
+        codeServerDeps = builtins.fetchTarball {
+          url = "https://github.com/daveman1010221/code-server-flake/archive/refs/heads/main.tar.gz";
+          sha256 = "sha256-GupyDQG1yxw/3DseKJsD1skQdAJTll3489RWl6RyyzA=";
+        };
 
         code-server = pkgs.stdenv.mkDerivation {
           pname = "code-server";
@@ -33,22 +36,37 @@
           };
 
           nativeBuildInputs = with pkgs; [
-            nodejs_20
-            makeWrapper
             jq
+            krb5
+            makeWrapper
             moreutils
-            rsync
+            nodejs_20
             pkg-config
+            rsync
+            xorg.libX11
+            xorg.libxkbfile
           ];
 
           unpackPhase = ''
             cp -r $src/* .
-            tar -xzf ${codeServerDeps}
+            mkdir _deps
+            tar -xzf ${codeServerDeps}/code-server-vendored-deps.tar.gz -C _deps
+          '';
+
+          patchPhase = ''
+            rm -rf node_modules
+            rm -rf package.json package-lock.json
+            cp -r _deps/node_modules .
+            cp _deps/package.json .
+            cp _deps/package-lock.json .
+
+            chmod -R +w ci
+            patchShebangs ci/build/*
           '';
 
           buildPhase = ''
-            set -x
             export HOME=$PWD
+            echo "PWD: $PWD"
             export NODE_ENV=production
             export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
             npm rebuild --ignore-scripts
@@ -57,7 +75,6 @@
           '';
 
           installPhase = ''
-            set -x
             mkdir -p $out/libexec/code-server $out/bin
             cp -r release/* $out/libexec/code-server/
             makeWrapper ${pkgs.nodejs_20}/bin/node $out/bin/code-server \
